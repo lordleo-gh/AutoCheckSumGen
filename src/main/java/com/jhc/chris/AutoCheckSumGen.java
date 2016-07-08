@@ -1,4 +1,4 @@
-package com.jhc;
+package com.jhc.chris;
 
 import java.nio.file.*;
 import static java.nio.file.StandardWatchEventKinds.*;
@@ -68,7 +68,7 @@ public class AutoCheckSumGen {
         if (recursive) {
             System.out.format("Scanning %s ...\n", dir);
             registerAll(dir);
-            System.out.println("Done.");
+          //  System.out.println("Done.");
         } else {
             register(dir);
         }
@@ -80,21 +80,25 @@ public class AutoCheckSumGen {
     /**
      * Process all events for keys queued to the watcher
      */
-    void processEvents() {
-        File changedfile;
+    void processEvents(String ext) {
+        System.out.format("Start watching for .%s changes...\n", ext);
+
         for (;;) {
 
             // wait for key to be signalled
             WatchKey key;
+
             try {
                 key = watcher.take();
-            } catch (InterruptedException x) {
-                return;
+            }
+
+            catch (InterruptedException x) {
+               return ;
             }
 
             Path dir = keys.get(key);
             if (dir == null) {
-                System.err.println("WatchKey not recognized!!");
+                System.out.println("WatchKey not recognized!!");
                 continue;
             }
 
@@ -110,16 +114,21 @@ public class AutoCheckSumGen {
                 WatchEvent<Path> ev = cast(event);
                 Path name = ev.context();
                 Path child = dir.resolve(name);
+                File changedfile;
 
                 // print out event
-                System.out.format("%s: %s\n", event.kind().name(), child);
+                // System.out.format("%s: %s ... ", kind.name(), child);
                 changedfile = child.toFile();
 
-                if (changedfile.isFile()){
-                    //String ext = MetaFileGenereator.getFileExtension(changedfile);
-                    if (MetaFileGenereator.getFileExtension(changedfile).equals("exe")) {
-                    System.out.println("generating md5\n");
-                    MetaFileGenereator.CreateMetaFile(changedfile);
+                if (changedfile.isFile() && kind == ENTRY_MODIFY) {
+                    if (MetaFileWriter.getFileExtension(changedfile).equals(ext)) {
+                        System.out.format("Trying to generate md5 hash for %s ... ", changedfile.getAbsoluteFile());
+                        ChangedFileLog.addItem();
+                       // t.interrupt();
+                        //MetaFileWriter.CreateMetaFile(changedfile);
+                        Thread t = new Thread(new FileWriter());
+                        t.start();
+                    }
                 }
                 // if directory is created, and watching recursively, then
                 // register it and its sub-directories
@@ -132,7 +141,8 @@ public class AutoCheckSumGen {
                         // ignore to keep sample readbale
                     }
                 }
-                }
+
+                // changedfile.
             }
 
             // reset key and remove from set if directory no longer accessible
@@ -152,25 +162,28 @@ public class AutoCheckSumGen {
 
 
     static void usage() {
-        System.err.println("usage: java -jar AutoCheckSumGen [-r] DIR EXT");
+        System.out.println("usage: java -jar AutoCheckSumGen [-r] DIR EXT");
         System.exit(-1);
     }
 
     public static void main(String[] args) throws IOException {
         // parse arguments
-        if (args.length == 0 || args.length > 2)
+        if (args.length <= 1 || args.length > 3)
             usage();
         boolean recursive = false;
         int dirArg = 0;
         if (args[0].equals("-r")) {
-            if (args.length < 2)
+            if (args.length < 3)
                 usage();
             recursive = true;
             dirArg++;
         }
 
+        System.out.println("Initialising");
         // register directory and process its events
         Path dir = Paths.get(args[dirArg]);
-        new AutoCheckSumGen(dir, recursive).processEvents();
+        String ext = args[++dirArg].toUpperCase();
+
+        new AutoCheckSumGen(dir, recursive).processEvents(ext);
     }
 }
