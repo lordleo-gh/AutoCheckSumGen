@@ -17,6 +17,8 @@ public class AutoCheckSumGen {
     private final Map<WatchKey,Path> keys;
     private final boolean recursive;
     private boolean trace = false;
+    private final String ext;
+    private ThreadList runningWriterThreads = ThreadList.getInstance();
 
     @SuppressWarnings("unchecked")
     static <T> WatchEvent<T> cast(WatchEvent<?> event) {
@@ -60,10 +62,11 @@ public class AutoCheckSumGen {
     /**
      * Creates a WatchService and registers the given directory
      */
-    AutoCheckSumGen(Path dir, boolean recursive) throws IOException {
+    AutoCheckSumGen(Path dir, boolean recursive, String ext) throws IOException {
         this.watcher = FileSystems.getDefault().newWatchService();
         this.keys = new HashMap<WatchKey,Path>();
         this.recursive = recursive;
+        this.ext = ext;
 
         if (recursive) {
             System.out.format("Scanning %s ...\n", dir);
@@ -73,6 +76,8 @@ public class AutoCheckSumGen {
             register(dir);
         }
 
+        createMetafilesOnStartup(dir);
+
         // enable trace after initial registration
         this.trace = true;
     }
@@ -80,7 +85,7 @@ public class AutoCheckSumGen {
     /**
      * Process all events for keys queued to the watcher
      */
-    void processEvents(String ext) {
+    void processEvents() {
         System.out.format("Start watching for .%s changes...\n", ext);
 
         for (;;) {
@@ -114,21 +119,32 @@ public class AutoCheckSumGen {
                 WatchEvent<Path> ev = cast(event);
                 Path name = ev.context();
                 Path child = dir.resolve(name);
-                File changedfile;
-
+                ChangedFile changedfile = new ChangedFile(child.toUri());
+                changedfile.kind = kind;
                 // print out event
-                // System.out.format("%s: %s ... ", kind.name(), child);
-                changedfile = child.toFile();
+               // System.out.format("%s: %s ... ", kind.name(), child);
+               // System.out.println();
+                //changedfile.myFile = child.toFile();
 
-                if (changedfile.isFile() && kind == ENTRY_MODIFY) {
-                    if (MetaFileWriter.getFileExtension(changedfile).equals(ext)) {
-                        System.out.format("Trying to generate md5 hash for %s ... ", changedfile.getAbsoluteFile());
-                        ChangedFileLog.addItem();
-                       // t.interrupt();
-                        //MetaFileWriter.CreateMetaFile(changedfile);
-                        Thread t = new Thread(new FileWriter());
-                        t.start();
-                    }
+                if (!changedfile.isDirectory()) {
+                    // note that .exe as directory will go through when ENTRY_DELETED
+                    startWritingMeta(changedfile);
+//                    if (MetadataFileWriter.getFileExtension(changedfile).equals(ext)) {
+//                        Boolean ThreadExists = false;
+//                        for (Thread WriterThread: runningWriterThreads.getRunningWriterThreads()){
+//                            if (WriterThread.getName().equals(changedfile.getAbsolutePath())){
+//                                ThreadExists = true;
+//                                break;
+//                            }
+//                        }
+//                        if (!ThreadExists) {
+//                            Thread t = new Thread(new MetadataFileWriter(changedfile));
+//                            t.setName(changedfile.getAbsolutePath());
+//                            runningWriterThreads.getRunningWriterThreads().add(t);
+//                            t.start();
+//
+//                        }
+//                    }
                 }
                 // if directory is created, and watching recursively, then
                 // register it and its sub-directories
@@ -158,12 +174,40 @@ public class AutoCheckSumGen {
         }
     }
 
-
-
-
     static void usage() {
         System.out.println("usage: java -jar AutoCheckSumGen [-r] DIR EXT");
         System.exit(-1);
+    }
+
+    void createMetafilesOnStartup(Path dir) {
+        for (final File file : dir.toFile().listFiles()) {
+            if (file.isDirectory() && recursive) {
+                createMetafilesOnStartup(dir);
+            } else {
+                // treat all as modified to force create metadata
+                ChangedFile watchedFile = new ChangedFile(file.toURI());
+                watchedFile.kind = ENTRY_MODIFY;
+                startWritingMeta(watchedFile);
+            }
+        }
+    }
+
+    void startWritingMeta(ChangedFile file){
+        if (ChangedFile.getFileExtension(file).equals(ext)) {
+            Boolean ThreadExists = false;
+            for (Thread WriterThread : runningWriterThreads.getRunningWriterThreads()) {
+                if (WriterThread.getName().equals(file.getAbsolutePath())) {
+                    ThreadExists = true;
+                    break;
+                }
+            }
+            if (!ThreadExists) {
+                Thread t = new Thread(new MetadataFileWriter(file));
+                t.setName(file.getAbsolutePath());
+                runningWriterThreads.getRunningWriterThreads().add(t);
+                t.start();
+            }
+        }
     }
 
     public static void main(String[] args) throws IOException {
@@ -183,7 +227,7 @@ public class AutoCheckSumGen {
         // register directory and process its events
         Path dir = Paths.get(args[dirArg]);
         String ext = args[++dirArg].toUpperCase();
-
-        new AutoCheckSumGen(dir, recursive).processEvents(ext);
+       // changedFiles = new LinkedHashMap<String, ChangedFile>();
+        new AutoCheckSumGen(dir, recursive, ext).processEvents();
     }
 }
