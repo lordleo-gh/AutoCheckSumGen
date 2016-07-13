@@ -71,7 +71,6 @@ public class AutoCheckSumGen {
         if (recursive) {
             System.out.format("Scanning %s ...\n", dir);
             registerAll(dir);
-          //  System.out.println("Done.");
         } else {
             register(dir);
         }
@@ -89,14 +88,12 @@ public class AutoCheckSumGen {
         System.out.format("Start watching for .%s changes...\n", ext);
 
         for (;;) {
-
             // wait for key to be signalled
             WatchKey key;
 
             try {
                 key = watcher.take();
             }
-
             catch (InterruptedException x) {
                return ;
             }
@@ -109,7 +106,6 @@ public class AutoCheckSumGen {
 
             for (WatchEvent<?> event: key.pollEvents()) {
                 WatchEvent.Kind kind = event.kind();
-
                 // TBD - provide example of how OVERFLOW event is handled
                 if (kind == OVERFLOW) {
                     continue;
@@ -121,30 +117,10 @@ public class AutoCheckSumGen {
                 Path child = dir.resolve(name);
                 ChangedFile changedfile = new ChangedFile(child.toUri());
                 changedfile.kind = kind;
-                // print out event
-               // System.out.format("%s: %s ... ", kind.name(), child);
-               // System.out.println();
-                //changedfile.myFile = child.toFile();
 
                 if (!changedfile.isDirectory()) {
-                    // note that .exe as directory will go through when ENTRY_DELETED
+                    // note that .exe or any watched extension as directory will go through when ENTRY_DELETED
                     startWritingMeta(changedfile);
-//                    if (MetadataFileWriter.getFileExtension(changedfile).equals(ext)) {
-//                        Boolean ThreadExists = false;
-//                        for (Thread WriterThread: runningWriterThreads.getRunningWriterThreads()){
-//                            if (WriterThread.getName().equals(changedfile.getAbsolutePath())){
-//                                ThreadExists = true;
-//                                break;
-//                            }
-//                        }
-//                        if (!ThreadExists) {
-//                            Thread t = new Thread(new MetadataFileWriter(changedfile));
-//                            t.setName(changedfile.getAbsolutePath());
-//                            runningWriterThreads.getRunningWriterThreads().add(t);
-//                            t.start();
-//
-//                        }
-//                    }
                 }
                 // if directory is created, and watching recursively, then
                 // register it and its sub-directories
@@ -157,8 +133,6 @@ public class AutoCheckSumGen {
                         // ignore to keep sample readbale
                     }
                 }
-
-                // changedfile.
             }
 
             // reset key and remove from set if directory no longer accessible
@@ -175,7 +149,7 @@ public class AutoCheckSumGen {
     }
 
     static void usage() {
-        System.out.println("usage: java -jar AutoCheckSumGen [-r] DIR EXT");
+        System.out.println("usage: java -jar AutoCheckSumGen [-r] <VALID-DIR> <EXT-TO-WATCH>");
         System.exit(-1);
     }
 
@@ -226,8 +200,9 @@ public class AutoCheckSumGen {
         System.out.println("Initialising");
         // register directory and process its events
         Path dir = Paths.get(args[dirArg]);
-        String ext = args[++dirArg].toUpperCase();
-       // changedFiles = new LinkedHashMap<String, ChangedFile>();
-        new AutoCheckSumGen(dir, recursive, ext).processEvents();
+        if (Files.exists(dir)) {
+            String ext = args[++dirArg].toUpperCase();
+            new AutoCheckSumGen(dir, recursive, ext).processEvents();
+        } else { usage(); }
     }
 }
